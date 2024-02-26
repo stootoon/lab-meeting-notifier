@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 # And a channel, defaulting to "#sinatest"
 parser = ArgumentParser()
 parser.add_argument('--rota_file', type=str, default="lab-meeting-rota.csv")
-parser.add_argument('--channel', type=str, default="#sinatest")
+parser.add_argument('--channel', type=str, default="sinatest")
 args = parser.parse_args()
 
 # Your Slack bot token
@@ -16,7 +16,9 @@ assert "SLACK_BOT_TOKEN" in os.environ, "Did not find environment variable SLACK
 slack_token = os.environ["SLACK_BOT_TOKEN"]
 client = WebClient(token=slack_token)
 
-def send_message(message, channel="#sinatest"):
+def send_message(message, channel="sinatest"):
+    if channel[0] != "#":
+        channel = "#" + channel
     print(f"Attempting to post:")
     print("--------------------")
     print(f"{message}")
@@ -77,6 +79,13 @@ def create_message(next_rota):
             message += ".\n"
     elif meeting_type.lower() == "journal club":
         message = f"Dear <!channel>, a reminder that the lab meeting {date_string} will be a *Journal Club*.\n"
+        comments = next_rota["Comments"] if pd.notna(next_rota["Comments"]) else ""
+        comments = comments.strip()
+        if len(comments) > 0:
+            if comments.startswith("http"):
+                message += f"We will be discussing <{comments}|this paper>.\n"
+            else:
+                message += f"We will be discussing {comments}.\n"
         message += f"{speaker} will be leading the discussion.\n"
         if scribe:
             message += f"{scribe} will be the scribe.\n"
@@ -109,10 +118,15 @@ rota["Time"] = pd.to_datetime(rota["Time"], format="%H:%M").dt.time
 # Combine the date and time into a single datetime object
 rota["Date"] = pd.to_datetime(rota["Date"].astype(str) + " " + rota["Time"].astype(str))
 
-N = 0
+# Set $N$ to be the current hour in 24 hour time
+hour = pd.Timestamp.today().hour
+N = 0 #5 -((hour - 10) % 24)
 rotas = rota[rota["Date"] > pd.Timestamp.today() - pd.Timedelta(days=N*7)]
 # Read the first row into a dictionary
 next_rota = rotas.iloc[0].to_dict()
 print(f"{next_rota=}")
 msg = create_message(next_rota)
-send_message(msg)
+if "christmas" in msg.lower():
+    print(f"Skipping message because it contains the word 'Christmas'.")
+else:
+    send_message(msg, channel = args.channel)
